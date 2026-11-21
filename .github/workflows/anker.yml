@@ -1,0 +1,32 @@
+# Every day: save the anchor and all audit logs of nimbus.vote in this repository and recount
+# them. The commits are the public record: whoever clones or forks this repository keeps a copy
+# that we as operators cannot change afterwards.
+name: Täglicher Anker
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  anker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --no-audit --no-fund
+      - name: Anker holen und nachzählen
+        run: node taeglich.ts
+      - name: Speichern
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add anker protokolle
+          git diff --cached --quiet || git commit -m "Anker $(date -u +%F)"
+          git push
