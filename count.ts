@@ -11,6 +11,7 @@ import { readFile } from "node:fs/promises"
 import { sha256, type LedgerEntry } from "./lib/chain.ts"
 import { checkAgainstAnchor } from "./lib/anchor.ts"
 import { tally, type PublishedQuestion } from "./lib/count.ts"
+import { LEDGER_FILE_FORMAT } from "./lib/format.ts"
 
 type LedgerFile = { format: string; question: PublishedQuestion; entries: LedgerEntry[] }
 
@@ -33,8 +34,12 @@ async function main(): Promise<number> {
     return 2
   }
   const data = await load(source)
-  if (data.format !== "ocv-ledger-v1") {
-    console.error(`Unbekanntes Format: ${String(data.format)}`)
+  if (data.format !== LEDGER_FILE_FORMAT) {
+    console.error(
+      data.format === "ocv-ledger-v1"
+        ? "Älteres Format ocv-ledger-v1: Dieses Zählskript erwartet ocv-ledger-v2. Für alte Dateien die frühere Version des Skripts nehmen."
+        : `Unbekanntes Format: ${String(data.format)}. Vielleicht ist dieses Zählskript veraltet; bitte neueste Version holen.`,
+    )
     return 2
   }
   const q = data.question

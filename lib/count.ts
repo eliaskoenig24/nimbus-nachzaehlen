@@ -22,8 +22,50 @@ export type PublishedQuestion = {
   text: string
   options: string[]
   scope: string
-  /** Roots and members of every group at the moment the question was opened. */
-  rootsAtOpen: Record<string, { root: string; leaves: string[] }>
+  /**
+   * Who may vote, per group (spec §4.1, S3): the members admitted to this question in order of
+   * admission. sizes[0] = members at opening; every later size marks a brand-new person who
+   * registered while the question ran. roots[i] is the root of the first sizes[i] leaves.
+   * The list only grows; a device change never adds the new device to a running question.
+   */
+  eligible: Record<string, EligibleGroup>
+}
+
+export type EligibleGroup = { leaves: string[]; sizes: number[]; roots: string[] }
+
+/**
+ * Recomputes every root of an eligibility list from its leaves. Returns a problem text, or null if
+ * sizes and roots are consistent. Incremental: each leaf is hashed into the tree once.
+ */
+/** Appends a leaf; "0" (a member removed before opening) is placed like any other value. */
+function addLeaf(group: Group, leaf: string): void {
+  if (leaf === "0") {
+    // Group refuses 0 directly; inserting and removing gives exactly the tree with a 0 leaf.
+    group.addMember(1n)
+    group.removeMember(group.size - 1)
+  } else {
+    group.addMember(BigInt(leaf))
+  }
+}
+
+export function eligibleProblem(e: EligibleGroup): string | null {
+  if (!Array.isArray(e?.leaves) || !Array.isArray(e.sizes) || !Array.isArray(e.roots)) return "unvollständig"
+  if (e.sizes.length === 0 || e.sizes.length !== e.roots.length) return "Größen und Wurzeln passen nicht zusammen"
+  for (let i = 0; i < e.sizes.length; i++) {
+    const size = e.sizes[i]
+    if (!Number.isInteger(size) || size < 0 || (i > 0 && size <= e.sizes[i - 1])) return "Größen wachsen nicht"
+  }
+  if (e.sizes.at(-1) !== e.leaves.length) return "letzte Größe passt nicht zu den Mitgliedern"
+  if (e.leaves.some((l) => typeof l !== "string" || !NUMBER.test(l))) return "ungültiges Mitglied in der Liste"
+  if (e.roots.some((r) => typeof r !== "string" || !NUMBER.test(r))) return "ungültige Wurzel in der Liste"
+  const group = new Group()
+  let next = 0
+  for (let i = 0; i < e.sizes.length; i++) {
+    while (group.size < e.sizes[i]) addLeaf(group, e.leaves[next++])
+    const root = group.size === 0 ? "0" : group.root.toString()
+    if (root !== e.roots[i]) return `Wurzel ${i + 1} passt nicht zu den ersten ${e.sizes[i]} Mitgliedern`
+  }
+  return null
 }
 
 export type VoteCheck =
@@ -64,10 +106,10 @@ export function checkVoteRules(q: PublishedQuestion, proof: VoteProof): VoteChec
   // The proof must be made for exactly this question; a proof for another question has
   // another scope, and therefore also another nullifier.
   if (proof.scope !== q.scope) return { ok: false, reason: "wrong_question" }
-  // The root must be one frozen when the question opened (S3): a device added later,
-  // e.g. after a device change, cannot vote on a running question.
-  const groupId = Object.keys(q.rootsAtOpen).find(
-    (g) => q.rootsAtOpen[g].root === proof.merkleTreeRoot && q.rootsAtOpen[g].root !== "0",
+  // The root must be one published for this question (S3): members at opening, or a brand-new
+  // person admitted later. A device added by a device change never gets a root here.
+  const groupId = Object.keys(q.eligible).find(
+    (g) => proof.merkleTreeRoot !== "0" && q.eligible[g].roots.includes(proof.merkleTreeRoot),
   )
   if (!groupId) return { ok: false, reason: "unknown_root" }
   const answer = Number(proof.message)
@@ -112,9 +154,9 @@ export type Tally = {
 export async function tally(q: PublishedQuestion, entries: LedgerEntry[], sha256: Sha256): Promise<Tally> {
   const questionProblems: string[] = []
   if ((await questionScopeWith(sha256, q.questionId)) !== q.scope) questionProblems.push("Scope passt nicht zur Fragen-ID")
-  for (const [groupId, { root, leaves }] of Object.entries(q.rootsAtOpen)) {
-    const recomputed = leaves.length === 0 ? "0" : new Group(leaves.map(BigInt)).root.toString()
-    if (recomputed !== root) questionProblems.push(`Wurzel der Gruppe ${groupId} passt nicht zu ihren Mitgliedern`)
+  for (const [groupId, e] of Object.entries(q.eligible)) {
+    const problem = eligibleProblem(e)
+    if (problem) questionProblems.push(`Gruppe ${groupId}: ${problem}`)
   }
 
   const chain = await verifyChainWith(sha256, q.questionId, entries)

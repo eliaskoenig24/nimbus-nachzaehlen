@@ -56,8 +56,12 @@ Kleine Länder: Landesgruppen unter der Mindestgröße (Vorschlag 100) gehen in 
 „weitere Länder“; die Staatsangehörigkeit erscheint dann nicht im Stimmnachweis.
 
 ## 4. Stimmabgabe
-1. Jede Frage hat eine ID und bei Eröffnung festgehaltene Wurzeln aller Gruppen (veröffentlicht).
-2. Gerät erzeugt Semaphore-Nachweis: Gruppe = eigene Landesgruppe (Wurzel bei Eröffnung),
+1. Jede Frage hat eine ID und je Gruppe eine veröffentlichte, nur wachsende Liste zugelassener
+   Mitglieder: alle Mitglieder bei Eröffnung, danach jede Person, die sich während der Laufzeit
+   **zum ersten Mal** registriert (Späteinsteiger, E20). Zu jeder Listengröße gehört eine Wurzel.
+   Ein Gerätewechsel fügt das neue Gerät nicht hinzu; nach einer Löschung rückt dieselbe Person bei
+   den damals laufenden Fragen nicht nach.
+2. Gerät erzeugt Semaphore-Nachweis: Gruppe = alle zugelassenen Mitglieder seiner Gruppe (neueste Wurzel),
    Scope = Fragen-ID, Nachricht = Antwort.
 3. Server prüft Nachweis, Wurzel, Scope, Antwort (mit denselben Regeln wie das Auszählungsskript);
    schreibt Eintrag ins Prüfprotokoll; Quittung = Position + Prüfwert.
@@ -83,7 +87,7 @@ ausweisen → mit veröffentlichtem Ergebnis vergleichen.
 | --- | --- | --- |
 | registrations | registration_id, commitment, group_id, rotated_at | nein (getrennt, verschlüsselt) |
 | groups | group_id, members (commitments), root | ja |
-| questions | question_id, text, options, opens_at, closes_at, roots_at_open | ja |
+| questions | question_id, text, options, opens_at, closes_at, eligible (je Gruppe: leaves, sizes, roots) | ja |
 | ledger | siehe §5 | ja |
 | unverified_votes | question_id, option, cookie_id, hour_bucket | nur als Summe |
 
@@ -94,7 +98,7 @@ Nie gespeichert: Name, Geburtsdatum, Dokumentnummer, Foto, IP zu Stimmen, genaue
 | --- | --- | --- |
 | S1 | Doppelte Registrierungs-ID → nie zweites Konto | Prototyp |
 | S2 | Inhaber kann fremde Registrierung seines Dokuments per Neu-Verifizierung übernehmen; Wechsel öffentlich gezählt | Prototyp |
-| S3 | Stimmen nur gegen bei Eröffnung veröffentlichte Wurzeln | Prototyp |
+| S3 | Stimmen nur gegen für die Frage veröffentlichte Wurzeln; jede Wurzel aus den ersten n zugelassenen Mitgliedern nachrechenbar; Gerätewechsel und Löschen+Neu-Registrieren bringen keinen zweiten Platz in einer laufenden Frage | Prototyp |
 | S4 | Keine IPs/genauen Zeiten zu Stimmen in Logs | Prototyp |
 | S5 | Auszählung + Server-Code quelloffen | Pilot |
 | S6 | Auffälligkeiten je Land erkennen und markieren | Pilot |

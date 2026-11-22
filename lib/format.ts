@@ -7,6 +7,13 @@
 
 export const LEDGER_VERSION = "ocv-ledger-v1"
 
+/**
+ * Format of the published file / API answer (question + entries). Separate from LEDGER_VERSION,
+ * which is part of every hash and must never change. v2 (E20): `question.eligible` replaces
+ * `question.rootsAtOpen`.
+ */
+export const LEDGER_FILE_FORMAT = "ocv-ledger-v2"
+
 /** Semaphore proof as produced by @semaphore-protocol/proof 4.x. */
 export type VoteProof = {
   merkleTreeDepth: number
