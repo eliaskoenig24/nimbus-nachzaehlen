@@ -15,6 +15,7 @@ import {
   type Sha256,
   type VoteProof,
 } from "./format.ts"
+import { answerValues, decodeAnswer } from "./answer.ts"
 
 /** What is published about a question; everything needed to check and count it. */
 export type PublishedQuestion = {
@@ -29,6 +30,8 @@ export type PublishedQuestion = {
    * The list only grows; a device change never adds the new device to a running question.
    */
   eligible: Record<string, EligibleGroup>
+  /** „Wie wichtig ist dir das?“ 1 to this number, inside the answer (./answer.ts). Absent = no importance. */
+  importanceScale?: number
 }
 
 export type EligibleGroup = { leaves: string[]; sizes: number[]; roots: string[] }
@@ -113,7 +116,7 @@ export function checkVoteRules(q: PublishedQuestion, proof: VoteProof): VoteChec
   )
   if (!groupId) return { ok: false, reason: "unknown_root" }
   const answer = Number(proof.message)
-  if (!Number.isSafeInteger(answer) || answer < 0 || answer >= q.options.length) {
+  if (!Number.isSafeInteger(answer) || answer < 0 || answer >= answerValues(q)) {
     return { ok: false, reason: "invalid_answer" }
   }
   return { ok: true, groupId, answer, nullifier: proof.nullifier }
@@ -145,6 +148,8 @@ export type Tally = {
   voters: number
   /** Counted votes per option; only the last vote per nullifier counts (re-voting, spec §4.4). */
   totals: number[]
+  /** Sum of the importance given, per option (null for questions without importance). */
+  importanceSums: number[] | null
 }
 
 /**
@@ -154,6 +159,10 @@ export type Tally = {
 export async function tally(q: PublishedQuestion, entries: LedgerEntry[], sha256: Sha256): Promise<Tally> {
   const questionProblems: string[] = []
   if ((await questionScopeWith(sha256, q.questionId)) !== q.scope) questionProblems.push("Scope passt nicht zur Fragen-ID")
+  const scale = q.importanceScale
+  if (scale !== undefined && (!Number.isInteger(scale) || scale < 2 || scale > 10)) {
+    questionProblems.push("Ungültige Skala für die Wichtigkeit")
+  }
   for (const [groupId, e] of Object.entries(q.eligible)) {
     const problem = eligibleProblem(e)
     if (problem) questionProblems.push(`Gruppe ${groupId}: ${problem}`)
@@ -167,6 +176,7 @@ export async function tally(q: PublishedQuestion, entries: LedgerEntry[], sha256
     invalid: [],
     voters: 0,
     totals: q.options.map(() => 0),
+    importanceSums: q.importanceScale === undefined ? null : q.options.map(() => 0),
   }
   if (!chain.ok || questionProblems.length > 0) return result
 
@@ -186,6 +196,10 @@ export async function tally(q: PublishedQuestion, entries: LedgerEntry[], sha256
     lastByNullifier.set(check.nullifier, check.answer)
   }
   result.voters = lastByNullifier.size
-  for (const answer of lastByNullifier.values()) result.totals[answer]++
+  for (const answer of lastByNullifier.values()) {
+    const { choice, importance } = decodeAnswer(q, answer)
+    result.totals[choice]++
+    if (result.importanceSums && importance !== null) result.importanceSums[choice] += importance
+  }
   return result
 }
